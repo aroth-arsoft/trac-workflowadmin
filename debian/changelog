@@ -1,0 +1,36 @@
+trac-workflowadmin (0.12.0.2+svn13939~aroth~ppa1) trusty; urgency=medium
+
+  * latest version
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sun, 25 May 2014 19:38:20 +0200
+
+trac-workflowadmin (0.12.0.2+svn12968.2~raring1) raring; urgency=low
+
+  * revert back to pysupport and cdbs because of missing entry_points support
+  in distutils
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Mon, 15 Apr 2013 08:21:51 +0200
+
+trac-workflowadmin (0.12.0.2+svn12968.1) quantal; urgency=low
+
+  * fixed build trouble
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Wed, 10 Apr 2013 08:38:29 +0200
+
+trac-workflowadmin (0.12.0.2+svn12968) quantal; urgency=low
+
+  * update to revsion 12968 with some improvements
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Wed, 10 Apr 2013 07:45:32 +0200
+
+trac-workflowadmin (0.12.0.1+svn10642-1~aroth~ppa2~lucid1) lucid; urgency=low
+
+  * build for lucid too
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Wed, 07 Sep 2011 07:09:33 +0200
+
+trac-workflowadmin (0.12.0.1+svn10642-1~aroth~ppa1) natty; urgency=low
+
+  * first package for natty
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Tue, 06 Sep 2011 12:03:35 +0200
