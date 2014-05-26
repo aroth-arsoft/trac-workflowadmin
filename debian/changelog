@@ -1,3 +1,9 @@
+trac-workflowadmin (0.12.0.2+svn13939~aroth~ppa2) trusty; urgency=medium
+
+  * fixed dh_python2 trouble
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Mon, 26 May 2014 08:04:49 +0200
+
 trac-workflowadmin (0.12.0.2+svn13939~aroth~ppa1) trusty; urgency=medium
 
   * latest version
