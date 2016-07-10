@@ -2,6 +2,7 @@
 
 import ConfigParser
 import glob
+import inspect
 import os
 import re
 import time
@@ -20,19 +21,18 @@ from trac.config import Configuration, Option, BoolOption, ListOption, \
                         FloatOption, ChoiceOption
 from trac.env import IEnvironmentSetupParticipant
 from trac.perm import PermissionSystem
-from trac.util import arity
 from trac.util.compat import md5, any
 from trac.util.text import to_unicode, exception_to_unicode
 from trac.util.translation import dgettext, domain_functions
-from trac.web.chrome import ITemplateProvider, add_stylesheet, add_script, \
-                            add_script_data
+from trac.web.chrome import Chrome, ITemplateProvider, add_stylesheet, \
+                            add_script, add_script_data
 
 
 _, N_, add_domain = domain_functions('tracworkflowadmin',
                                      '_', 'N_', 'add_domain')
 
 
-if arity(Option.__init__) <= 5:
+if 'doc_domain' not in inspect.getargspec(Option.__init__)[0]:
     def _option_with_tx(Base): # Trac 0.12.x
         class Option(Base):
             def __getattribute__(self, name):
@@ -126,22 +126,22 @@ class TracWorkflowAdminModule(Component):
 
     # IAdminPanelProvider methods
     def get_admin_panels(self, req):
-        if 'TRAC_ADMIN' in req.perm:
+        if 'TRAC_ADMIN' in req.perm('admin', 'ticket/workflowadmin'):
             yield ('ticket', dgettext("messages", ("Ticket System")),
                    'workflowadmin', _("Workflow Admin"))
 
     def render_admin_panel(self, req, cat, page, path_info):
-        req.perm.assert_permission('TRAC_ADMIN')
+        req.perm('admin', 'ticket/workflowadmin').require('TRAC_ADMIN')
+
         if req.method == 'POST':
             self._parse_request(req)
 
         action, status = self._conf_to_inner_format(self.config)
         operations = self.operations
         permissions = self._get_permissions(req)
-        add_stylesheet(req, 'tracworkflowadmin/themes/base/jquery-ui.css')
         add_stylesheet(req, 'tracworkflowadmin/css/tracworkflowadmin.css')
+        self._add_jquery_ui(req)
         add_stylesheet(req, 'tracworkflowadmin/css/jquery.multiselect.css')
-        add_script(req, 'tracworkflowadmin/scripts/jquery-ui.js')
         add_script(req, 'tracworkflowadmin/scripts/jquery.json-2.2.js')
         add_script(req, 'tracworkflowadmin/scripts/jquery.multiselect.js')
         add_script(req, 'tracworkflowadmin/scripts/main.js')
@@ -157,6 +157,14 @@ class TracWorkflowAdminModule(Component):
             'text': self._conf_to_str(self.config)
         }
         return 'tracworkflowadmin.html', data
+
+    if hasattr(Chrome, 'add_jquery_ui'):
+        def _add_jquery_ui(self, req):
+            Chrome(self.env).add_jquery_ui(req)
+    else:
+        def _add_jquery_ui(self, req):
+            add_stylesheet(req, 'tracworkflowadmin/themes/base/jquery-ui.css')
+            add_script(req, 'tracworkflowadmin/scripts/jquery-ui.js')
 
     def _conf_to_inner_format(self, conf):
         statuses = []
@@ -427,25 +435,26 @@ class TracWorkflowAdminModule(Component):
     def _image_tmp_path(self, basename):
         return os.path.join(self.env.get_htdocs_dir(), 'tracworkflowadmin', basename)
 
-    def _image_tmp_url(self, req, basename):
-        return req.href.chrome('site/tracworkflowadmin/%s' % basename)
+    def _image_tmp_url(self, req, basename, timestamp):
+        kwargs = {}
+        if timestamp is not None:
+            kwargs['_'] = str(timestamp)
+        return req.href.chrome('site/tracworkflowadmin', basename, **kwargs)
 
     def _update_diagram(self, req, params):
         _, errors = self._validate_workflow(req, params)
-        basename = 'error.png'
+        data = {'result': (1, 0)[len(errors) == 0],     # 0 if cond else 1
+                'errors': errors}
         if len(errors) == 0:
             script = self._create_dot_script(params)
             self._image_path_setup(req)
             dir = os.path.join(self.env.get_htdocs_dir(), 'tracworkflowadmin')
             basename = '%s.png' % md5(script).hexdigest()
             path = os.path.join(dir, basename)
-            if self.diagram_cache and os.path.isfile(path):
-                os.utime(path, None)
-            else:
+            if not self.diagram_cache or not os.path.isfile(path):
                 self._create_diagram_image(path, dir, script, errors)
-        data = {'result': (1, 0)[len(errors) == 0],     # 0 if cond else 1
-                'errors': errors,
-                'image_url': self._image_tmp_url(req, basename)}
+            timestamp = int(os.path.getmtime(path))
+            data['image_url'] = self._image_tmp_url(req, basename, timestamp)
         req.send(json.dumps(data))
         # NOTREACHED
 
@@ -453,12 +462,15 @@ class TracWorkflowAdminModule(Component):
         fd, tmp = mkstemp(suffix='.png', dir=dir)
         os.close(fd)
         try:
+            args = [self.dot_path, '-Tpng', '-o', tmp]
             try:
-                proc = Popen([self.dot_path, '-Tpng', '-o', tmp], stdin=PIPE)
+                proc = Popen(args, stdin=PIPE)
             except OSError, e:
+                message = exception_to_unicode(e)
+                self.log.warn('Cannot execute dot: %s: %r', message, args)
                 errors.append(_(
                     "The dot command '%(path)s' is not available: %(e)s",
-                    path=self.dot_path, e=exception_to_unicode(e)))
+                    path=self.dot_path, e=message))
                 os.remove(tmp)
                 return
             try:
@@ -663,9 +675,11 @@ class TracWorkflowAdminModule(Component):
                     self.config.set('ticket-workflow', key, val)
                 self.config.save()
             except Exception, e:
+                self.log.error('Exception caught while saving trac.ini%s',
+                               exception_to_unicode(e, traceback=True))
                 self.config.parse_if_needed(force=True)
                 out['result'] = 1
-                out['errors'] = [e.message]
+                out['errors'] = [exception_to_unicode(e)]
         req.send(json.dumps(out)) # not return
 
     def _parse_request(self, req):
