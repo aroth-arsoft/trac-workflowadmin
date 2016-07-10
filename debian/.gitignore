@@ -1,0 +1,6 @@
+*.debhelper
+*.substvars
+*.log
+/debhelper-build-stamp
+/files
+/trac-workflowadmin/
