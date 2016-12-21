@@ -1,3 +1,9 @@
+trac-workflowadmin (0.12.0.3+svn16129-0.1~aroth1) yakkety; urgency=medium
+
+  * new upstream version 0.12.0.3+svn16129
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Wed, 21 Dec 2016 07:09:00 +0100
+
 trac-workflowadmin (0.12+svn15657-0.1~aroth~ppa3) xenial; urgency=medium
 
   * switch away from native package
