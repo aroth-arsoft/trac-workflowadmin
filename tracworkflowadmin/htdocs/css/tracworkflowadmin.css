@@ -1,4 +1,4 @@
-a {
+#tabcontent a {
  overflow: hidden; /* for text-indent of firefox */
 }
 
@@ -55,6 +55,7 @@ a {
 #elements th a { padding: 1px }
 #elements th, #elements td { padding: 0 }
 
+div.ui-multiselect-menu ul { overflow-x: hidden }
 div.ui-multiselect-menu ul li label div.sorter {
  display: block;
  visibility: hidden;
@@ -114,5 +115,4 @@ table#elements tbody tr:hover button {
 #main-form { clear: both }
 #main-form p { display: none }
 fieldset#chart-area { padding: 0 1em }
-#chart-update-button { display:none }
 #text-data { width: 640px }

@@ -7,7 +7,7 @@ import os
 import re
 import time
 from cStringIO import StringIO
-from pkg_resources import resource_filename
+from pkg_resources import resource_filename, parse_version
 from subprocess import Popen, PIPE
 from tempfile import mkstemp
 try:
@@ -15,6 +15,7 @@ try:
 except ImportError:
     import simplejson as json
 
+from trac import __version__
 from trac.core import Component, implements
 from trac.admin import IAdminPanelProvider
 from trac.config import Configuration, Option, BoolOption, ListOption, \
@@ -28,8 +29,8 @@ from trac.web.chrome import Chrome, ITemplateProvider, add_stylesheet, \
                             add_script, add_script_data
 
 
-_, N_, add_domain = domain_functions('tracworkflowadmin',
-                                     '_', 'N_', 'add_domain')
+_, gettext, N_, add_domain = domain_functions(
+    'tracworkflowadmin', '_', 'gettext', 'N_', 'add_domain')
 
 
 if 'doc_domain' not in inspect.getargspec(Option.__init__)[0]:
@@ -61,6 +62,13 @@ ChoiceOption = _option_with_tx(ChoiceOption)
 __all__ = ['TracWorkflowAdminModule']
 
 
+_default_operations = ['del_owner', 'set_owner', 'set_owner_to_self',
+                       'del_resolution', 'set_resolution', 'leave_status']
+if parse_version(__version__) >= parse_version('1.2'):
+    _default_operations.append('may_set_owner')
+_default_operations = ', '.join(_default_operations)
+
+
 def _msgjs_locales(dir=None):
     if dir is None:
         dir = resource_filename(__name__, 'htdocs')
@@ -75,9 +83,7 @@ class TracWorkflowAdminModule(Component):
                IEnvironmentSetupParticipant)
 
     operations = ListOption('workflow-admin', 'operations',
-        'del_owner, set_owner, set_owner_to_self, del_resolution, '
-        'set_resolution, leave_status',
-        doc=N_("Operations in workflow admin"))
+        _default_operations, doc=N_("Operations in workflow admin"))
     dot_path = Option('workflow-admin', 'dot_path', 'dot',
         doc=N_("Path to the dot executable"))
     diagram_cache = BoolOption('workflow-admin', 'diagram_cache', 'false',
@@ -143,7 +149,7 @@ class TracWorkflowAdminModule(Component):
         self._add_jquery_ui(req)
         add_stylesheet(req, 'tracworkflowadmin/css/jquery.multiselect.css')
         add_script(req, 'tracworkflowadmin/scripts/jquery.json-2.2.js')
-        add_script(req, 'tracworkflowadmin/scripts/jquery.multiselect.js')
+        add_script(req, self._jquery_multiselect)
         add_script(req, 'tracworkflowadmin/scripts/main.js')
         add_script_data(req, {'auto_update_interval': int(self.auto_update_interval)})
         if req.locale and str(req.locale) in self.msgjs_locales:
@@ -161,10 +167,13 @@ class TracWorkflowAdminModule(Component):
     if hasattr(Chrome, 'add_jquery_ui'):
         def _add_jquery_ui(self, req):
             Chrome(self.env).add_jquery_ui(req)
+        _jquery_multiselect = 'tracworkflowadmin/scripts/jquery.multiselect.js'
     else:
         def _add_jquery_ui(self, req):
             add_stylesheet(req, 'tracworkflowadmin/themes/base/jquery-ui.css')
             add_script(req, 'tracworkflowadmin/scripts/jquery-ui.js')
+        _jquery_multiselect = \
+            'tracworkflowadmin/scripts/jquery.multiselect-1.9.js'
 
     def _conf_to_inner_format(self, conf):
         statuses = []
@@ -488,47 +497,49 @@ class TracWorkflowAdminModule(Component):
                 pass
             os.rename(tmp, path)
 
-    def _get_init_workflow(self):
-        config = {
-            'leave': 'new,assigned,accepted,reopened,closed -> *',
-            'leave.default': '9',
-            'leave.name': _("Leave"),
-            'leave.operations': 'leave_status',
-            'accept': 'new,assigned,accepted,reopened -> accepted',
-            'accept.default': '7',
-            'accept.name': _("Accept"),
-            'accept.operations': 'set_owner_to_self',
-            'accept.permissions': 'TICKET_MODIFY',
-            'reassign': 'new,assigned,accepted,reopened -> assigned',
-            'reassign.default': '5',
-            'reassign.name': _("Reassign"),
-            'reassign.operations': 'set_owner',
-            'reassign.permissions': 'TICKET_MODIFY',
-            'reopen': 'closed -> reopened',
-            'reopen.default': '3',
-            'reopen.name': _("Reopen"),
-            'reopen.operations': 'del_resolution',
-            'reopen.permissions': 'TICKET_CREATE',
-            'resolve': 'new,assigned,accepted,reopened -> closed',
-            'resolve.default': '1',
-            'resolve.name': _("Resolve"),
-            'resolve.operations': 'set_resolution',
-            'resolve.permissions': 'TICKET_MODIFY',
-        }
-        return config.iteritems()
+    _default_workflow = (
+        ('leave', 'new,assigned,accepted,reopened,closed -> *'),
+        ('leave.default', '9'),
+        ('leave.name', N_("Leave")),
+        ('leave.operations', 'leave_status'),
+        ('accept', 'new,assigned,reopened -> accepted'),
+        ('accept.default', '7'),
+        ('accept.name', N_("Accept")),
+        ('accept.operations', 'set_owner_to_self'),
+        ('accept.permissions', 'TICKET_MODIFY'),
+        ('reassign', 'new,accepted,reopened -> assigned'),
+        ('reassign.default', '5'),
+        ('reassign.name', N_("Reassign")),
+        ('reassign.operations', 'set_owner'),
+        ('reassign.permissions', 'TICKET_MODIFY'),
+        ('reopen', 'closed -> reopened'),
+        ('reopen.default', '3'),
+        ('reopen.name', N_("Reopen")),
+        ('reopen.operations', 'del_resolution'),
+        ('reopen.permissions', 'TICKET_CREATE'),
+        ('resolve', 'new,assigned,accepted,reopened -> closed'),
+        ('resolve.default', '1'),
+        ('resolve.name', N_("Resolve")),
+        ('resolve.operations', 'set_resolution'),
+        ('resolve.permissions', 'TICKET_MODIFY'),
+    )
 
-    def _initialize_workflow(self, req):
-        for (name, value) in self.config.options('ticket-workflow'):
-            self.config.remove('ticket-workflow', name)
-
+    def _get_default_workflow(self):
         has_init = False
-        for (name, value) in self.config.options('workflow-admin-init'):
-            self.config.set('ticket-workflow', name, value)
+        for name, value in self.config.options('workflow-admin-init'):
+            yield name, value
             has_init = True
         if not has_init:
-            for (name, value) in self._get_init_workflow():
-                self.config.set('ticket-workflow', name, value)
+            for name, value in self._default_workflow:
+                if name.endswith('.name'):
+                    value = gettext(value)
+                yield name, value
 
+    def _initialize_workflow(self, req):
+        for name, value in self.config.options('ticket-workflow'):
+            self.config.remove('ticket-workflow', name)
+        for name, value in self._get_default_workflow():
+            self.config.set('ticket-workflow', name, value)
         self.config.save()
 
     def _validate_workflow(self, req, params):
@@ -602,16 +613,18 @@ class TracWorkflowAdminModule(Component):
                                 "Line %(num)d: Status '%(status)s' is invalid.",
                                 num=lineInfo[tempName], status=stat))
 
-                if 'operations' in act:
-                    lineErrors.extend(_("Line %(num)d: Unknown operator.",
-                                        num=lineInfo[tempName + '.operations'])
-                                      for operation in act['operations']
-                                      if operation not in operations)
-                if 'permissions' in act:
-                    lineErrors.extend(_("Line %(num)d: Unknown permission.",
-                                        num=lineInfo[tempName + '.permissions'])
-                                      for perm in act['permissions']
-                                      if not perm in perms)
+                lineErrors.extend(_("Line %(num)d: Unknown operator "
+                                    "'%(name)s'", name=operation,
+                                    num=lineInfo[tempName + '.operations'])
+                                  for operation in act.get('operations', ())
+                                  if operation not in operations)
+
+                lineErrors.extend(_("Line %(num)d: Unknown permission "
+                                    "'%(name)s'", name=perm,
+                                    num=lineInfo[tempName + '.permissions'])
+                                  for perm in act.get('permissions', ())
+                                  if not perm in perms)
+
                 if 'default' in act and act['default'] == -1:
                     lineErrors.append(_(
                         "Line %(num)d: specify a numerical value to 'default'.",
