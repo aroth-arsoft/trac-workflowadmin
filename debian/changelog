@@ -1,3 +1,9 @@
+trac-workflowadmin (0.12.0.4+svn16676-0.1~aroth1) zesty; urgency=medium
+
+  * new upstream version rev 16676
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sat, 24 Jun 2017 17:36:28 +0200
+
 trac-workflowadmin (0.12.0.3+svn16129-0.1~aroth1) yakkety; urgency=medium
 
   * new upstream version 0.12.0.3+svn16129
