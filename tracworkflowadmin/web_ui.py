@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 
 import ConfigParser
+import errno
 import glob
 import inspect
 import os
@@ -8,6 +9,7 @@ import re
 import time
 from cStringIO import StringIO
 from pkg_resources import resource_filename, parse_version
+from random import Random
 from subprocess import Popen, PIPE
 from tempfile import mkstemp
 try:
@@ -22,7 +24,7 @@ from trac.config import Configuration, Option, BoolOption, ListOption, \
                         FloatOption, ChoiceOption
 from trac.env import IEnvironmentSetupParticipant
 from trac.perm import PermissionSystem
-from trac.util.compat import md5, any
+from trac.util.compat import sha1, any
 from trac.util.text import to_unicode, exception_to_unicode
 from trac.util.translation import dgettext, domain_functions
 from trac.web.chrome import Chrome, ITemplateProvider, add_stylesheet, \
@@ -132,12 +134,12 @@ class TracWorkflowAdminModule(Component):
 
     # IAdminPanelProvider methods
     def get_admin_panels(self, req):
-        if 'TRAC_ADMIN' in req.perm('admin', 'ticket/workflowadmin'):
+        if 'TICKET_ADMIN' in req.perm('admin', 'ticket/workflowadmin'):
             yield ('ticket', dgettext("messages", ("Ticket System")),
                    'workflowadmin', _("Workflow Admin"))
 
     def render_admin_panel(self, req, cat, page, path_info):
-        req.perm('admin', 'ticket/workflowadmin').require('TRAC_ADMIN')
+        req.perm('admin', 'ticket/workflowadmin').require('TICKET_ADMIN')
 
         if req.method == 'POST':
             self._parse_request(req)
@@ -458,7 +460,7 @@ class TracWorkflowAdminModule(Component):
             script = self._create_dot_script(params)
             self._image_path_setup(req)
             dir = os.path.join(self.env.get_htdocs_dir(), 'tracworkflowadmin')
-            basename = '%s.png' % md5(script).hexdigest()
+            basename = '%s.png' % sha1(script).hexdigest()
             path = os.path.join(dir, basename)
             if not self.diagram_cache or not os.path.isfile(path):
                 self._create_diagram_image(path, dir, script, errors)
@@ -467,9 +469,20 @@ class TracWorkflowAdminModule(Component):
         req.send(json.dumps(data))
         # NOTREACHED
 
+    _random = Random()
+
     def _create_diagram_image(self, path, dir, script, errors):
-        fd, tmp = mkstemp(suffix='.png', dir=dir)
-        os.close(fd)
+        flags = os.O_CREAT + os.O_WRONLY + os.O_EXCL
+        while True:
+            tmp = '%s.%08x' % (path, self._random.randint(0, 0xffffffff))
+            try:
+                fd = os.open(tmp, flags, 0666)
+            except OSError, e:
+                if e.errno != errno.EEXIST:
+                    raise
+                continue
+            os.close(fd)
+            break
         try:
             args = [self.dot_path, '-Tpng', '-o', tmp]
             try:
@@ -492,10 +505,10 @@ class TracWorkflowAdminModule(Component):
             raise
         else:
             try:
+                os.rename(tmp, path)
+            except OSError:
                 os.remove(path)
-            except:
-                pass
-            os.rename(tmp, path)
+                os.rename(tmp, path)
 
     _default_workflow = (
         ('leave', 'new,assigned,accepted,reopened,closed -> *'),
