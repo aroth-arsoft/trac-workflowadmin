@@ -1,3 +1,10 @@
+trac-workflowadmin (0.12.0.5+svn17497-1) disco; urgency=medium
+
+  * Automatic update 0.12.0.5 from https://trac-hacks.org/browser/trac
+    workflowadminplugin/0.12/?format=zip&rev=17497 revision 17497
+
+ -- Andreas Roth <aroth@arsoft-online.com>  Sun, 15 Sep 2019 18:39:26 +0200
+
 trac-workflowadmin (0.12.0.5+svn17350-0.1~aroth1) cosmic; urgency=medium
 
   * new upstream version 0.12.0.5
